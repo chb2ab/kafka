@@ -45,6 +45,7 @@
   // Version 14 is the same as version 13 but it also receives a new error called OffsetMovedToTieredStorageException (KIP-405)
   //
   // Version 15 is the same as version 14 (KIP-903).
+  // Version 15 incrementally adds host and port to the 'CurrentLeader' field.
   "validVersions": "0-15",
   "flexibleVersions": "12+",
   "fields": [
@@ -82,7 +83,11 @@
           { "name": "LeaderId", "type": "int32", "versions": "12+", "default": "-1", "entityType": "brokerId",
             "about": "The ID of the current leader or -1 if the leader is unknown."},
           { "name": "LeaderEpoch", "type": "int32", "versions": "12+", "default": "-1",
-            "about": "The latest known leader epoch"}
+            "about": "The latest known leader epoch"},
+          { "name": "Host", "type": "string", "versions": "15+",
+            "about": "The broker hostname." },
+          { "name": "Port", "type": "int32", "versions": "15+",
+            "about": "The broker port." }
         ]},
         { "name": "SnapshotId", "type": "SnapshotId",
           "versions": "12+", "taggedVersions": "12+", "tag": 2,

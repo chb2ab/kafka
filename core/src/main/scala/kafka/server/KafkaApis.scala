@@ -49,6 +49,7 @@ import org.apache.kafka.common.message.ListOffsetsResponseData.{ListOffsetsParti
 import org.apache.kafka.common.message.MetadataResponseData.{MetadataResponsePartition, MetadataResponseTopic}
 import org.apache.kafka.common.message.OffsetForLeaderEpochRequestData.OffsetForLeaderTopic
 import org.apache.kafka.common.message.OffsetForLeaderEpochResponseData.{EpochEndOffset, OffsetForLeaderTopicResult, OffsetForLeaderTopicResultCollection}
+import org.apache.kafka.common.message.ProduceResponseData.LeaderIdAndEpoch
 import org.apache.kafka.common.message._
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.network.{ListenerName, NetworkSend, Send}
@@ -552,6 +553,29 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
   }
 
+  private def getCurrentLeader(tp: TopicPartition): LeaderIdAndEpoch = {
+    val partitionInfoOrError = replicaManager.getPartitionOrError(tp)
+    val leaderIdAndEpoch = new LeaderIdAndEpoch()
+    partitionInfoOrError match {
+      case Right(x) =>
+        leaderIdAndEpoch
+          .setLeaderId(x.leaderReplicaIdOpt.getOrElse(-1))
+          .setLeaderEpoch(x.getLeaderEpoch)
+      case Left(x) =>
+        debug(s"Unable to retrieve local leaderId and Epoch with error $x, falling back to metadata cache")
+        val partitionInfo = metadataCache.getPartitionInfo(tp.topic, tp.partition)
+        partitionInfo.foreach { info =>
+          leaderIdAndEpoch
+            .setLeaderId(info.leader())
+            .setLeaderEpoch(info.leaderEpoch())
+        }
+    }
+    val broker: Node = metadataCache.getAliveBrokerNode(leaderIdAndEpoch.leaderId(), config.interBrokerListenerName).getOrElse(Node.noNode())
+    leaderIdAndEpoch
+      .setHost(broker.host)
+      .setPort(broker.port)
+  }
+
   /**
    * Handle a produce request
    */
@@ -612,6 +636,15 @@ class KafkaApis(val requestChannel: RequestChannel,
             request.header.clientId,
             topicPartition,
             status.error.exceptionName))
+        }
+
+        status.currentLeader = {
+          status.error match {
+            case Errors.NOT_LEADER_OR_FOLLOWER | Errors.FENCED_LEADER_EPOCH =>
+              getCurrentLeader(topicPartition)
+            case _ =>
+              null
+          }
         }
       }
 
@@ -839,6 +872,8 @@ class KafkaApis(val requestChannel: RequestChannel,
               .setRecords(unconvertedRecords)
               .setPreferredReadReplica(partitionData.preferredReadReplica)
               .setDivergingEpoch(partitionData.divergingEpoch)
+              // Do not check request version for POC
+              .setCurrentLeader(partitionData.currentLeader())
         }
       }
     }
@@ -860,6 +895,18 @@ class KafkaApis(val requestChannel: RequestChannel,
           .setAbortedTransactions(abortedTransactions)
           .setRecords(data.records)
           .setPreferredReadReplica(data.preferredReadReplica.orElse(FetchResponse.INVALID_PREFERRED_REPLICA_ID))
+
+        data.error match {
+          case Errors.NOT_LEADER_OR_FOLLOWER | Errors.FENCED_LEADER_EPOCH =>
+            val currentLeader = getCurrentLeader(tp.topicPartition())
+            partitionData.currentLeader()
+              .setLeaderId(currentLeader.leaderId)
+              .setLeaderEpoch(currentLeader.leaderEpoch)
+              .setHost(currentLeader.host)
+              .setPort(currentLeader.port)
+          case _ =>
+        }
+
         data.divergingEpoch.ifPresent(partitionData.setDivergingEpoch(_))
         partitions.put(tp, partitionData)
       }
