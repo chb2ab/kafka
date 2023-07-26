@@ -701,7 +701,7 @@ public class RecordAccumulator {
                 }
 
                 waitedTimeMs = batch.waitedTimeMs(nowMs);
-                backingOff = batch.attempts() > 0 && waitedTimeMs < retryBackoffMs;
+                backingOff = false; // batch.attempts() > 0 && waitedTimeMs < retryBackoffMs;
                 dequeSize = deque.size();
                 full = dequeSize > 1 || batch.isFull();
             }
@@ -854,7 +854,8 @@ public class RecordAccumulator {
                     continue;
 
                 // first != null
-                boolean backoff = first.attempts() > 0 && first.waitedTimeMs(now) < retryBackoffMs;
+                boolean backoff = false; // first.attempts() > 0 && first.waitedTimeMs(now) < retryBackoffMs;
+
                 // Only drain the batch if it is not during backoff period.
                 if (backoff)
                     continue;
@@ -869,6 +870,8 @@ public class RecordAccumulator {
                 }
 
                 batch = deque.pollFirst();
+                if (batch.attempts() > 0)
+                    log.warn("drainBatchesForOneNode localcounter {}, batch {}", batch.localCounter.get(), batch);
 
                 boolean isTransactional = transactionManager != null && transactionManager.isTransactional();
                 ProducerIdAndEpoch producerIdAndEpoch =

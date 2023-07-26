@@ -698,8 +698,10 @@ public class Sender implements Runnable {
                 LeaderIdAndEpoch responseLeaderEpoch = response.currentLeader;
                 Metadata.LeaderAndEpoch currentLeaderEpoch = metadata.currentLeader(tp);
 
-                log.debug("Produce - Response leaderAndEpoch: {}, existing LeaderAndEpoch {}", responseLeaderEpoch,
+                log.warn("Produce - Response leaderAndEpoch: {}, existing LeaderAndEpoch {}", responseLeaderEpoch,
                     currentLeaderEpoch);
+                log.warn("retrying batch.localCounter {}, batch {}", batch.localCounter.get(), batch);
+//                batch.resetAttempts();
 
                 // Validate if response leader epoch is ahead of existing leader epoch then update metadata cache with
                 // response leader and epoch.
@@ -707,11 +709,10 @@ public class Sender implements Runnable {
                 // has epoch lesser than current assigned leader epoch in which case the update will not be successful from
                 // Produce Response, and we shall fall back to metadata update.
                 if (responseLeaderEpoch.leaderEpoch() > currentLeaderEpoch.epoch.orElse(-1)) {
-                    log.debug("Leader/epoch changed. Response leaderAndEpoch: {}, existing LeaderAndEpoch {}, error: {}",
+                    log.warn("Leader/epoch changed. Response leaderAndEpoch: {}, existing LeaderAndEpoch {}, error: {}",
                         responseLeaderEpoch, currentLeaderEpoch, error.exceptionName());
                     handleLeaderAndEpochUpdate(tp, responseLeaderEpoch);
                     // Try to force an immediate retry
-                    batch.resetAttempts();
                 } else {
                     log.warn("Produce leader epoch is not updated for topic partition {}", tp);
                     metadata.requestUpdate();
