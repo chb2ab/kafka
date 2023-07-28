@@ -23,6 +23,7 @@ import org.apache.kafka.clients.KafkaClient;
 import org.apache.kafka.clients.Metadata;
 import org.apache.kafka.clients.NetworkClientUtils;
 import org.apache.kafka.clients.RequestCompletionHandler;
+import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.InvalidRecordException;
 import org.apache.kafka.common.KafkaException;
@@ -66,6 +67,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -310,6 +312,11 @@ public class Sender implements Runnable {
      *
      */
     void runOnce() {
+        // Only log if true, follow same pattern at other places.
+        if(KafkaProducer.shouldLog.get()) {
+            log.warn("starting log");
+        }
+        long startTime = time.milliseconds();
         if (transactionManager != null) {
             try {
                 transactionManager.maybeResolveSequences();
@@ -343,8 +350,19 @@ public class Sender implements Runnable {
         }
 
         long currentTimeMs = time.milliseconds();
+        if(KafkaProducer.shouldLog.get()) {
+            log.warn("transaction time was {} ms", currentTimeMs - startTime);
+        }
         long pollTimeout = sendProducerData(currentTimeMs);
+        long time3 = time.milliseconds();
+        if(KafkaProducer.shouldLog.get()) {
+            log.warn("sendProducerData time was {} ms, pollTimeout {}", time3 - currentTimeMs, pollTimeout);
+        }
         client.poll(pollTimeout, currentTimeMs);
+        if(KafkaProducer.shouldLog.get()) {
+            log.warn("client poll time was {} ms", time.milliseconds() - time3);
+        }
+//        KafkaProducer.shouldLog.set(false);
     }
 
     // We handle {@code TransactionalIdAuthorizationException} and {@code ClusterAuthorizationException} by first
@@ -693,6 +711,8 @@ public class Sender implements Runnable {
                             "to request metadata update now", batch.topicPartition,
                             error.exception(response.errorMessage).toString());
                 }
+
+                KafkaProducer.shouldLog.set(true);
 
                 TopicPartition tp = batch.topicPartition;
                 LeaderIdAndEpoch responseLeaderEpoch = response.currentLeader;

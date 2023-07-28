@@ -85,6 +85,7 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 
@@ -258,6 +259,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     private final ProducerInterceptors<K, V> interceptors;
     private final ApiVersions apiVersions;
     private final TransactionManager transactionManager;
+
+    public static AtomicBoolean shouldLog = new AtomicBoolean(false);
 
     /**
      * A producer is instantiated by providing a set of key-value pairs as configuration. Valid configuration strings
