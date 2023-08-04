@@ -44,6 +44,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
@@ -79,6 +80,9 @@ public final class ProducerBatch {
     private boolean retry;
     private boolean reopened;
 
+    static AtomicLong batchCounter = new AtomicLong(0);
+    AtomicLong localCounter;
+
     public ProducerBatch(TopicPartition tp, MemoryRecordsBuilder recordsBuilder, long createdMs) {
         this(tp, recordsBuilder, createdMs, false);
     }
@@ -94,6 +98,7 @@ public final class ProducerBatch {
         this.isSplitBatch = isSplitBatch;
         float compressionRatioEstimation = CompressionRatioEstimator.estimation(topicPartition.topic(),
                                                                                 recordsBuilder.compressionType());
+        this.localCounter = new AtomicLong(batchCounter.incrementAndGet());
         recordsBuilder.setEstimatedCompressionRatio(compressionRatioEstimation);
     }
 

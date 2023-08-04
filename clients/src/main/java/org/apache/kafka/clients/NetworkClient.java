@@ -1124,7 +1124,7 @@ public class NetworkClient implements KafkaClient {
         private void recordMetadataLatency() {
             long latency = Duration.between(metadataRPCStart, Instant.now()).toMillis();
             Sender.Stats.recordMetadataRPCLatency(latency);
-            log.info("Metadata LatencyMs: {}", latency);
+            log.warn("Metadata LatencyMs: {}", latency);
         }
 
         @Override
@@ -1162,6 +1162,8 @@ public class NetworkClient implements KafkaClient {
                 log.trace("Ignoring empty metadata response with correlation id {}.", requestHeader.correlationId());
                 this.metadata.failedUpdate(now);
             } else {
+                // update metadata cache
+                log.warn("Updating metadata cache");
                 this.metadata.update(inProgress.requestVersion, response, inProgress.isPartialUpdate, now);
             }
 
@@ -1194,7 +1196,8 @@ public class NetworkClient implements KafkaClient {
             if (canSendRequest(nodeConnectionId, now)) {
                 Metadata.MetadataRequestAndVersion requestAndVersion = metadata.newMetadataRequestAndVersion(now);
                 MetadataRequest.Builder metadataRequest = requestAndVersion.requestBuilder;
-                log.debug("Sending metadata request {} to node {}", metadataRequest, node);
+                metadata.updateSentInstant = Instant.now();
+                log.warn("Sending metadata request {} to node {}", metadataRequest, node);
                 sendInternalMetadataRequest(metadataRequest, nodeConnectionId, now);
                 metadataRPCStart = Instant.now();
                 inProgress = new InProgressData(requestAndVersion.requestVersion, requestAndVersion.isPartialUpdate);

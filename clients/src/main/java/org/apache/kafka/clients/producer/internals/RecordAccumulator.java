@@ -626,7 +626,7 @@ public class RecordAccumulator {
             if (sendable && !backingOff) {
                 readyNodes.add(leader);
             } else {
-                log.info("batchReady NOT, Node {} sendable {}, backingoff {}", leader, sendable, backingOff);
+                log.warn("batchReady NOT, Node {} sendable {}, backingoff {}", leader, sendable, backingOff);
                 Sender.Stats.batchesNotReadyCounter.incrementAndGet();
                 Sender.Stats.logMetrics(true);
                 long timeLeftMs = Math.max(timeToWaitMs - waitedTimeMs, 0);
@@ -707,7 +707,7 @@ public class RecordAccumulator {
                 waitedTimeMs = batch.waitedTimeMs(nowMs);
                 backingOff = batch.attempts() > 0 && waitedTimeMs < retryBackoffMs;
                 if(backingOff) {
-                    log.info("partitionReady, batch {} leader {} backing-off", batch, leader);
+                    log.warn("partitionReady, batch {} leader {} backing-off", batch, leader);
                     Sender.Stats.batchesBackedOffCounter.incrementAndGet();
                     Sender.Stats.logMetrics(true);
                 }
@@ -866,7 +866,7 @@ public class RecordAccumulator {
                 boolean backoff = first.attempts() > 0 && first.waitedTimeMs(now) < retryBackoffMs;
                 // Only drain the batch if it is not during backoff period.
                 if (backoff) {
-                    log.info("drainBatchesForOneNode, Batch {} backing off", first);
+                    log.warn("drainBatchesForOneNode, Batch {} backing off", first);
                     Sender.Stats.batchesBackedOffCounter.incrementAndGet();
                     Sender.Stats.logMetrics(true);
                     continue;
@@ -882,6 +882,10 @@ public class RecordAccumulator {
                 }
 
                 batch = deque.pollFirst();
+                if (batch.attempts() > 0) {
+                    log.warn("drainBatchesForOneNode localcounter {}, batch {}", batch.localCounter.get(), batch);
+                    KafkaProducer.shouldLog.getAndDecrement();
+                }
 
                 boolean isTransactional = transactionManager != null && transactionManager.isTransactional();
                 ProducerIdAndEpoch producerIdAndEpoch =
@@ -1153,7 +1157,7 @@ public class RecordAccumulator {
 
         if (deque == null) return;
         synchronized (deque) {
-            log.info("For tp {}, skip back off for batches #{}", topicPartition, deque.size());
+            log.warn("For tp {}, skip back off for batches #{}", topicPartition, deque.size());
             deque.forEach(batch -> {
                 batch.resetRetryBackoff();
             });

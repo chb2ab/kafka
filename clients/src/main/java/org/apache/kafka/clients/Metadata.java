@@ -33,6 +33,8 @@ import org.slf4j.Logger;
 
 import java.io.Closeable;
 import java.net.InetSocketAddress;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -75,6 +77,9 @@ public class Metadata implements Closeable {
     private final ClusterResourceListeners clusterResourceListeners;
     private boolean isClosed;
     private final Map<TopicPartition, Integer> lastSeenLeaderEpochs;
+
+    private Instant updateRequestedInstant;
+    public Instant updateSentInstant;
 
     /**
      * Create a new Metadata instance
@@ -143,6 +148,10 @@ public class Metadata implements Closeable {
      * Request an update of the current cluster metadata info, return the current updateVersion before the update
      */
     public synchronized int requestUpdate() {
+        log.warn("setting metadata requestUpdate true");
+        if (this.updateRequestedInstant == null) {
+            this.updateRequestedInstant = Instant.now();
+        }
         this.needFullUpdate = true;
         return this.updateVersion;
     }
@@ -288,7 +297,13 @@ public class Metadata implements Closeable {
         }
         clusterResourceListeners.onUpdate(cache.clusterResource());
 
-        log.debug("Updated cluster metadata updateVersion {} to {}", this.updateVersion, this.cache);
+        if (updateRequestedInstant != null && updateSentInstant != null) {
+            log.warn("Updated cluster metadata, latency from request {} latency of RPC {} updateVersion {} new cache {}",
+                    Duration.between(updateRequestedInstant, Instant.now()).toMillis(), Duration.between(updateSentInstant, Instant.now()).toMillis(),
+                    this.updateVersion, this.cache);
+            updateRequestedInstant = null;
+            updateSentInstant = null;
+        }
     }
 
     private void maybeSetMetadataError(Cluster cluster) {
@@ -353,14 +368,14 @@ public class Metadata implements Closeable {
                         .ifPresent(partitions::add);
 
                     if (partitionMetadata.error.exception() instanceof InvalidMetadataException) {
-                        log.debug("Requesting metadata update for partition {} due to error {}",
+                        log.warn("Requesting metadata update for partition {} due to error {}",
                                 partitionMetadata.topicPartition, partitionMetadata.error);
                         requestUpdate();
                     }
                 }
             } else {
                 if (metadata.error().exception() instanceof InvalidMetadataException) {
-                    log.debug("Requesting metadata update for topic {} due to error {}", topicName, metadata.error());
+                    log.warn("Requesting metadata update for topic {} due to error {}", topicName, metadata.error());
                     requestUpdate();
                 }
 

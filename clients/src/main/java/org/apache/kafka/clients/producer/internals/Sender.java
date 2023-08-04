@@ -18,6 +18,7 @@ package org.apache.kafka.clients.producer.internals;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.ClientRequest;
@@ -26,6 +27,7 @@ import org.apache.kafka.clients.KafkaClient;
 import org.apache.kafka.clients.Metadata;
 import org.apache.kafka.clients.NetworkClientUtils;
 import org.apache.kafka.clients.RequestCompletionHandler;
+import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.InvalidRecordException;
 import org.apache.kafka.common.KafkaException;
@@ -143,6 +145,11 @@ public class Sender implements Runnable {
         private static Logger staticLog = null;
         private static long loggingWindowMs = 10 * 1000;
 
+//        public Instant produceSent;
+        public static ConcurrentHashMap<Long, Instant> batchToSendTime = new ConcurrentHashMap<>();
+        public static ConcurrentHashMap<Long, Instant> batchToRetryTime = new ConcurrentHashMap<>();
+        public static ConcurrentHashMap<Long, Instant> batchToRetrySendTime = new ConcurrentHashMap<>();
+
         public static void recordMetadataRPCLatency(long latencyMs) {
             totalMetadataRPCLatencyMs += latencyMs;
             maxMetadataRPCLatencyMs = Math.max(maxMetadataRPCLatencyMs, latencyMs);
@@ -157,7 +164,7 @@ public class Sender implements Runnable {
             long timeElapsedMs = Duration.between(metricLastLoggedTime, nowI).toMillis();
             if (timeElapsedMs > loggingWindowMs || alwaysLog) {
                 metricLastLoggedTime = nowI;
-                    staticLog.info("batchesBackedOffCounter: {}, batchesNotReadyCounter: {}, avg Metadata RPC latency ms: {}, max Metadata RPC latency ms: {} ",
+                    staticLog.warn("batchesBackedOffCounter: {}, batchesNotReadyCounter: {}, avg Metadata RPC latency ms: {}, max Metadata RPC latency ms: {} ",
                     batchesBackedOffCounter.get(), batchesNotReadyCounter.get(), totalMetadataRPCLatencyMs
                             /(double)countMetadataRPC, maxMetadataRPCLatencyMs);
             }
@@ -416,7 +423,7 @@ public class Sender implements Runnable {
             for (String topic : result.unknownLeaderTopics)
                 this.metadata.add(topic, now);
 
-            log.debug("Requesting metadata update due to unknown leader topics from the batched records: {}",
+            log.warn("Requesting metadata update due to unknown leader topics from the batched records: {}",
                 result.unknownLeaderTopics);
             this.metadata.requestUpdate();
         }
@@ -732,9 +739,21 @@ public class Sender implements Runnable {
                             "to request metadata update now", batch.topicPartition,
                             error.exception(response.errorMessage).toString());
                 }
+                long batchCounter = batch.localCounter.get();
+                log.warn("retrying batch {}, request took {} ms", batchCounter, Duration.between(Stats.batchToSendTime.get(batchCounter), Instant.now()).toMillis());
+                Stats.batchToRetryTime.put(batchCounter, Instant.now());
+                KafkaProducer.shouldLog.getAndIncrement();
                 metadata.requestUpdate();
             }
         } else {
+            if (batch.inRetry()) {
+                long batchCounter = batch.localCounter.get();
+                log.warn("completing retried batch {}, total time {}, initial request time {}, time after retry {}, time to retry {}", batch.localCounter.get(),
+                        Duration.between(Stats.batchToSendTime.get(batchCounter), Instant.now()).toMillis(),
+                        Duration.between(Stats.batchToSendTime.get(batchCounter), Stats.batchToRetryTime.get(batchCounter)).toMillis(),
+                        Duration.between(Stats.batchToRetryTime.get(batchCounter), Instant.now()).toMillis(),
+                        Duration.between(Stats.batchToRetryTime.get(batchCounter), Stats.batchToRetrySendTime.get(batchCounter)).toMillis());
+            }
             completeBatch(batch, response);
         }
 
@@ -915,6 +934,12 @@ public class Sender implements Runnable {
                     .setIndex(tp.partition())
                     .setRecords(records));
             recordsByPartition.put(tp, batch);
+            if (batch.inRetry()) {
+                log.warn("Sending retry for batch {} time to retry {}", batch.localCounter, Duration.between(Stats.batchToRetryTime.get(batch.localCounter.get()), Instant.now()).toMillis());
+                Stats.batchToRetrySendTime.put(batch.localCounter.get(), Instant.now());
+            } else {
+                Stats.batchToSendTime.put(batch.localCounter.get(), Instant.now());
+            }
         }
 
         String transactionalId = null;
