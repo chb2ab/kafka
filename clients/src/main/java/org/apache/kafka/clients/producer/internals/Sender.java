@@ -23,6 +23,7 @@ import org.apache.kafka.clients.KafkaClient;
 import org.apache.kafka.clients.Metadata;
 import org.apache.kafka.clients.NetworkClientUtils;
 import org.apache.kafka.clients.RequestCompletionHandler;
+import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.InvalidRecordException;
 import org.apache.kafka.common.KafkaException;
@@ -66,6 +67,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -310,6 +312,11 @@ public class Sender implements Runnable {
      *
      */
     void runOnce() {
+        // Only log if true, follow same pattern at other places.
+//        if(KafkaProducer.shouldLog.get()) {
+//            log.warn("starting log");
+//        }
+//        long startTime = time.milliseconds();
         if (transactionManager != null) {
             try {
                 transactionManager.maybeResolveSequences();
@@ -343,8 +350,19 @@ public class Sender implements Runnable {
         }
 
         long currentTimeMs = time.milliseconds();
+//        if(KafkaProducer.shouldLog.get()) {
+//            log.warn("transaction time was {} ms", currentTimeMs - startTime);
+//        }
         long pollTimeout = sendProducerData(currentTimeMs);
+//        long time3 = time.milliseconds();
+//        if(KafkaProducer.shouldLog.get()) {
+//            log.warn("sendProducerData time was {} ms, pollTimeout {}", time3 - currentTimeMs, pollTimeout);
+//        }
         client.poll(pollTimeout, currentTimeMs);
+//        if(KafkaProducer.shouldLog.get()) {
+//            log.warn("client poll time was {} ms", time.milliseconds() - time3);
+//        }
+//        KafkaProducer.shouldLog.set(false);
     }
 
     // We handle {@code TransactionalIdAuthorizationException} and {@code ClusterAuthorizationException} by first
@@ -694,12 +712,16 @@ public class Sender implements Runnable {
                             error.exception(response.errorMessage).toString());
                 }
 
+//                KafkaProducer.shouldLog.set(true);
+
                 TopicPartition tp = batch.topicPartition;
                 LeaderIdAndEpoch responseLeaderEpoch = response.currentLeader;
                 Metadata.LeaderAndEpoch currentLeaderEpoch = metadata.currentLeader(tp);
 
-                log.debug("Produce - Response leaderAndEpoch: {}, existing LeaderAndEpoch {}", responseLeaderEpoch,
+                log.warn("Produce - Response leaderAndEpoch: {}, existing LeaderAndEpoch {}", responseLeaderEpoch,
                     currentLeaderEpoch);
+//                log.warn("retrying batch.localCounter {}, batch {}", batch.localCounter.get(), batch);
+//                batch.resetAttempts();
 
                 // Validate if response leader epoch is ahead of existing leader epoch then update metadata cache with
                 // response leader and epoch.
@@ -707,11 +729,10 @@ public class Sender implements Runnable {
                 // has epoch lesser than current assigned leader epoch in which case the update will not be successful from
                 // Produce Response, and we shall fall back to metadata update.
                 if (responseLeaderEpoch.leaderEpoch() > currentLeaderEpoch.epoch.orElse(-1)) {
-                    log.debug("Leader/epoch changed. Response leaderAndEpoch: {}, existing LeaderAndEpoch {}, error: {}",
+                    log.warn("Leader/epoch changed. Response leaderAndEpoch: {}, existing LeaderAndEpoch {}, error: {}",
                         responseLeaderEpoch, currentLeaderEpoch, error.exceptionName());
                     handleLeaderAndEpochUpdate(tp, responseLeaderEpoch);
                     // Try to force an immediate retry
-                    batch.resetAttempts();
                 } else {
                     log.warn("Produce leader epoch is not updated for topic partition {}", tp);
                     metadata.requestUpdate();
