@@ -705,7 +705,7 @@ class ReplicaManager(val config: KafkaConfig,
                     actionQueue: ActionQueue = this.actionQueue): Unit = {
     if (isValidRequiredAcks(requiredAcks)) {
       val sTime = time.milliseconds
-      
+
       val transactionalProducerIds = mutable.HashSet[Long]()
       val (verifiedEntriesPerPartition, notYetVerifiedEntriesPerPartition) =
         if (transactionStatePartition.isEmpty || !config.transactionPartitionVerificationEnable)
@@ -729,18 +729,18 @@ class ReplicaManager(val config: KafkaConfig,
       }
 
       def appendEntries(allEntries: Map[TopicPartition, MemoryRecords])(unverifiedEntries: Map[TopicPartition, Errors]): Unit = {
-        val verifiedEntries = 
+        val verifiedEntries =
           if (unverifiedEntries.isEmpty)
-            allEntries 
+            allEntries
           else
             allEntries.filter { case (tp, _) =>
               !unverifiedEntries.contains(tp)
             }
-        
+
         val localProduceResults = appendToLocalLog(internalTopicsAllowed = internalTopicsAllowed,
           origin, verifiedEntries, requiredAcks, requestLocal)
         debug("Produce to local log in %d ms".format(time.milliseconds - sTime))
-        
+
         val unverifiedResults = unverifiedEntries.map { case (topicPartition, error) =>
           // NOTE: Older clients return INVALID_RECORD, but newer clients will return INVALID_TXN_STATE
           val message = if (error.equals(Errors.INVALID_RECORD)) "Partition was not added to the transaction" else error.message()
@@ -749,7 +749,7 @@ class ReplicaManager(val config: KafkaConfig,
             Some(error.exception(message))
           )
         }
-        
+
         val allResults = localProduceResults ++ unverifiedResults
 
         val produceStatus = allResults.map { case (topicPartition, result) =>
