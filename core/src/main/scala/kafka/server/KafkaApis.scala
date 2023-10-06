@@ -80,7 +80,6 @@ import java.util
 import java.util.concurrent.{CompletableFuture, ConcurrentHashMap}
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.{Collections, Optional, OptionalInt}
-import scala.annotation.nowarn
 import scala.collection.mutable.ArrayBuffer
 import scala.collection.{Map, Seq, Set, mutable}
 import scala.jdk.CollectionConverters._
@@ -631,8 +630,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     // The construction of ProduceResponse is able to accept auto-generated protocol data so
     // KafkaApis#handleProduceRequest should apply auto-generated protocol to avoid extra conversion.
     // https://issues.apache.org/jira/browse/KAFKA-10730
-    @nowarn("cat=deprecation")
     def sendResponseCallback(responseStatus: Map[TopicPartition, PartitionResponse]): Unit = {
+      val produceResponseData  = new ProduceResponseData()
       val mergedResponseStatus = responseStatus ++ unauthorizedTopicResponses ++ nonExistingTopicResponses ++ invalidRequestResponses
       var errorInResponse = false
 
@@ -662,6 +661,37 @@ class KafkaApis(val requestChannel: RequestChannel,
           }
         }
       }
+      mergedResponseStatus.foreach { case (tp, response) =>
+        var tpr = produceResponseData.responses.find(tp.topic())
+        if (tpr == null) {
+          tpr = new ProduceResponseData.TopicProduceResponse().setName(tp.topic())
+          produceResponseData.responses.add(tpr)
+        }
+        // The conversion from PartitionResponse to PartitionProduceResponse should be removed with
+        // https://issues.apache.org/jira/browse/KAFKA-10730
+        tpr.partitionResponses()
+          .add(new ProduceResponseData.PartitionProduceResponse()
+            .setIndex(tp.partition())
+            .setBaseOffset(response.baseOffset)
+            .setLogStartOffset(response.logStartOffset)
+            .setLogAppendTimeMs(response.logAppendTime)
+            .setErrorMessage(response.errorMessage)
+            .setErrorCode(response.error.code())
+            .setCurrentLeader(if (response.currentLeader != null) response.currentLeader else new LeaderIdAndEpoch())
+            .setRecordErrors(response.recordErrors.asScala
+              .map { e =>
+                new ProduceResponseData.BatchIndexAndErrorMessage()
+                  .setBatchIndex(e.batchIndex)
+                  .setBatchIndexErrorMessage(e.message)
+              }.toList.asJava))
+      }
+      nodeEndpoints.values.foreach { endpoint =>
+        produceResponseData.nodeEndpoints().add(new ProduceResponseData.NodeEndpoint()
+          .setNodeId(endpoint.id())
+          .setHost(endpoint.host())
+          .setPort(endpoint.port())
+          .setRack(endpoint.rack()))
+      }
 
       // Record both bandwidth and request quota-specific values and throttle by muting the channel if any of the quotas
       // have been violated. If both quotas have been violated, use the max throttle time between the two quotas. Note
@@ -673,6 +703,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         if (produceRequest.acks == 0) 0
         else quotas.request.maybeRecordAndGetThrottleTimeMs(request, timeMs)
       val maxThrottleTimeMs = Math.max(bandwidthThrottleTimeMs, requestThrottleTimeMs)
+      produceResponseData.setThrottleTimeMs(maxThrottleTimeMs)
       if (maxThrottleTimeMs > 0) {
         request.apiThrottleTimeMs = maxThrottleTimeMs
         if (bandwidthThrottleTimeMs > requestThrottleTimeMs) {
@@ -696,14 +727,14 @@ class KafkaApis(val requestChannel: RequestChannel,
               s"from client id ${request.header.clientId} with ack=0\n" +
               s"Topic and partition to exceptions: $exceptionsSummary"
           )
-          requestChannel.closeConnection(request, new ProduceResponse(mergedResponseStatus.asJava).errorCounts)
+          requestChannel.closeConnection(request, new ProduceResponse(produceResponseData).errorCounts)
         } else {
           // Note that although request throttling is exempt for acks == 0, the channel may be throttled due to
           // bandwidth quota violation.
           requestHelper.sendNoOpResponseExemptThrottle(request)
         }
       } else {
-        requestChannel.sendResponse(request, new ProduceResponse(mergedResponseStatus.asJava, maxThrottleTimeMs, nodeEndpoints.values.toList.asJava), None)
+        requestChannel.sendResponse(request, new ProduceResponse(produceResponseData), None)
       }
     }
 
