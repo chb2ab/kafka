@@ -2691,8 +2691,7 @@ public class KafkaConsumerTest {
                 fetchConfig,
                 new Deserializers<>(keyDeserializer, deserializer),
                 metricsManager,
-                time,
-                new ApiVersions());
+                time);
         OffsetFetcher offsetFetcher = new OffsetFetcher(loggerFactory,
                 consumerClient,
                 metadata,

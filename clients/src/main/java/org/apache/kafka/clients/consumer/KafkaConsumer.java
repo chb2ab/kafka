@@ -759,8 +759,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     fetchConfig,
                     this.deserializers,
                     fetchMetricsManager,
-                    this.time,
-                    apiVersions);
+                    this.time);
             this.offsetFetcher = new OffsetFetcher(logContext,
                     client,
                     metadata,

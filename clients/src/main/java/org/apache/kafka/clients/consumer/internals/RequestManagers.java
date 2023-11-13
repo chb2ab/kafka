@@ -143,8 +143,7 @@ public class RequestManagers implements Closeable {
                         fetchConfig,
                         fetchBuffer,
                         fetchMetricsManager,
-                        networkClientDelegate,
-                        apiVersions);
+                        networkClientDelegate);
                 final TopicMetadataRequestManager topic = new TopicMetadataRequestManager(
                         logContext,
                         config);

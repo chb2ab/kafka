@@ -17,7 +17,6 @@
 package org.apache.kafka.clients.consumer.internals;
 
 import org.apache.kafka.clients.ClientRequest;
-import org.apache.kafka.clients.ApiVersions;
 import org.apache.kafka.clients.ClientResponse;
 import org.apache.kafka.clients.FetchSessionHandler;
 import org.apache.kafka.clients.NetworkClient;
@@ -68,9 +67,8 @@ public class Fetcher<K, V> extends AbstractFetch {
                    FetchConfig fetchConfig,
                    Deserializers<K, V> deserializers,
                    FetchMetricsManager metricsManager,
-                   Time time,
-                   ApiVersions apiVersions) {
-        super(logContext, metadata, subscriptions, fetchConfig, new FetchBuffer(logContext), metricsManager, time, apiVersions);
+                   Time time) {
+        super(logContext, metadata, subscriptions, fetchConfig, new FetchBuffer(logContext), metricsManager, time);
         this.log = logContext.logger(Fetcher.class);
         this.client = client;
         this.fetchCollector = new FetchCollector<>(logContext,

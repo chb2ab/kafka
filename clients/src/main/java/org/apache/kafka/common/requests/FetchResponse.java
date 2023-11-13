@@ -16,7 +16,6 @@
  */
 package org.apache.kafka.common.requests;
 
-import org.apache.kafka.common.Node;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.TopicIdPartition;
 import org.apache.kafka.common.Uuid;
@@ -30,7 +29,6 @@ import org.apache.kafka.common.record.Records;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -172,7 +170,7 @@ public class FetchResponse extends AbstractResponse {
                              FetchResponseData.PartitionData>> partIterator) {
         // Since the throttleTimeMs and metadata field sizes are constant and fixed, we can
         // use arbitrary values here without affecting the result.
-        FetchResponseData data = toMessage(Errors.NONE, 0, INVALID_SESSION_ID, partIterator, Collections.emptyList());
+        FetchResponseData data = toMessage(Errors.NONE, 0, INVALID_SESSION_ID, partIterator);
         ObjectSerializationCache cache = new ObjectSerializationCache();
         return 4 + data.size(cache, version);
     }
@@ -240,16 +238,7 @@ public class FetchResponse extends AbstractResponse {
                                    int throttleTimeMs,
                                    int sessionId,
                                    LinkedHashMap<TopicIdPartition, FetchResponseData.PartitionData> responseData) {
-        return new FetchResponse(toMessage(error, throttleTimeMs, sessionId, responseData.entrySet().iterator(), Collections.emptyList()));
-    }
-
-    // TODO: remove as a part of KAFKA-12410
-    public static FetchResponse of(Errors error,
-                                   int throttleTimeMs,
-                                   int sessionId,
-                                   LinkedHashMap<TopicIdPartition, FetchResponseData.PartitionData> responseData,
-                                   List<Node> nodeEndpoints) {
-        return new FetchResponse(toMessage(error, throttleTimeMs, sessionId, responseData.entrySet().iterator(), nodeEndpoints));
+        return new FetchResponse(toMessage(error, throttleTimeMs, sessionId, responseData.entrySet().iterator()));
     }
 
     private static boolean matchingTopic(FetchResponseData.FetchableTopicResponse previousTopic, TopicIdPartition currentTopic) {
@@ -265,8 +254,7 @@ public class FetchResponse extends AbstractResponse {
     private static FetchResponseData toMessage(Errors error,
                                                int throttleTimeMs,
                                                int sessionId,
-                                               Iterator<Map.Entry<TopicIdPartition, FetchResponseData.PartitionData>> partIterator,
-                                               List<Node> nodeEndpoints) {
+                                               Iterator<Map.Entry<TopicIdPartition, FetchResponseData.PartitionData>> partIterator) {
         List<FetchResponseData.FetchableTopicResponse> topicResponseList = new ArrayList<>();
         while (partIterator.hasNext()) {
             Map.Entry<TopicIdPartition, FetchResponseData.PartitionData> entry = partIterator.next();
@@ -288,17 +276,11 @@ public class FetchResponse extends AbstractResponse {
                     .setPartitions(partitionResponses));
             }
         }
-        FetchResponseData data = new FetchResponseData();
-        // KafkaApis should only pass in node endpoints on error, otherwise this should be an empty list
-        nodeEndpoints.forEach(endpoint -> data.nodeEndpoints().add(
-                new FetchResponseData.NodeEndpoint()
-                        .setNodeId(endpoint.id())
-                        .setHost(endpoint.host())
-                        .setPort(endpoint.port())
-                        .setRack(endpoint.rack())));
-        return data.setThrottleTimeMs(throttleTimeMs)
-                .setErrorCode(error.code())
-                .setSessionId(sessionId)
-                .setResponses(topicResponseList);
+
+        return new FetchResponseData()
+            .setThrottleTimeMs(throttleTimeMs)
+            .setErrorCode(error.code())
+            .setSessionId(sessionId)
+            .setResponses(topicResponseList);
     }
 }

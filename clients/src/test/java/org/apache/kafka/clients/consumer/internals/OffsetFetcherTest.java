@@ -1263,8 +1263,7 @@ public class OffsetFetcherTest {
                 fetchConfig,
                 new Deserializers<>(new ByteArrayDeserializer(), new ByteArrayDeserializer()),
                 new FetchMetricsManager(metrics, metricsRegistry),
-                time,
-                apiVersions);
+                time);
 
         assignFromUser(singleton(tp0));
 
